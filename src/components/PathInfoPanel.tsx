@@ -108,7 +108,7 @@ export const PathInfoPanel: React.FC<PathInfoPanelProps> = ({ pathResult, nodes 
   const smartInsight = generateSmartInsight(pathResult)
 
   return (
-    <Card className="w-80 animate-fade-in">
+    <Card className="w-full animate-fade-in">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base">
           <Route className="h-4 w-4 text-primary" />

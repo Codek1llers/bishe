@@ -3,7 +3,7 @@
  * 包含路径规划、视图切换、仿真控制等功能
  */
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Button } from './ui/Button'
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card'
 import { LocationSearch } from './LocationSearch'
@@ -49,105 +49,21 @@ const RECOMMENDED_ROUTE_SECTIONS: {
   routes: RecommendedRoute[]
 }[] = [
   {
-    title: '常规出行',
+    title: '快速体验',
     routes: [
-      { id: 1, name: '东门→肯德基', start: 'bjfu_east', end: 'kfc_south', desc: '从东门出发到南门肯德基' },
-      { id: 2, name: '学院路→立交南侧', start: 'xueyuan_s1', end: 'interchange_sw', desc: '经北四环辅路进入东南侧立交地面枢纽' },
-      { id: 3, name: '西门→东门', start: 'bjfu_west', end: 'bjfu_east', desc: '横穿校园与成府路地面段' },
-      { id: 4, name: '北门→清华东路东', start: 'bjfu_north', end: 'qinghua_e', desc: '沿清华东路地面向东' },
-      { id: 5, name: '南门→四环东', start: 'bjfu_south', end: 'sihuan_e', desc: '经校园东南角至北四环辅路东段' },
-      { id: 6, name: '东门→公交站', start: 'bjfu_east', end: 'bus_east', desc: '东门附近至林业大学东门公交站' },
+      { id: 1, name: '东门 → 南门肯德基', start: 'bjfu_east', end: 'kfc_south', desc: '校园日常出行' },
+      { id: 2, name: '学院路 → 东南立交', start: 'xueyuan_s1', end: 'interchange_sw', desc: '地面道路接入立交' },
+      { id: 3, name: '西门 → 东门', start: 'bjfu_west', end: 'bjfu_east', desc: '横穿校园主轴' },
     ],
   },
   {
-    title: '立体导航演示（对比二维俯视）',
-    hint:
-      '传统 2D 地图俯视时，叠在一起的高架与地面、相邻匝道投影重叠，不易判断车辆在哪一层。以下包含上匝道、下匝道与「匝道桥下地面辅路」对照；请切换 2D/3D 与跟车视角对比。',
+    title: '立体演示',
+    hint: '优先选择含上桥、下桥、桥下通行的路线，对比 2D/3D 与跟车视角。',
     routes: [
-      {
-        id: 7,
-        name: '校园中心→高架东端（上桥）',
-        start: 'campus_c',
-        end: 't_ic_a_e',
-        desc: '经 hub、西向地面主线，再沿西→东匝道升上青蓝高架；俯视时易与桥下地面路混淆，3D 可看清爬升。',
-      },
-      {
-        id: 8,
-        name: '校园中心→立交西端（全程贴地）',
-        start: 'campus_c',
-        end: 't_ic_c_w',
-        desc: '与路线7对照：终点在同一立交区西侧、全程深色地面层；与「上桥」在俯视投影上有重叠感，高度完全不同。',
-      },
-      {
-        id: 9,
-        name: '南端→西端（地面转向）',
-        start: 't_ic_b_s',
-        end: 't_ic_c_w',
-        desc: '南→西紫色匝道贴地绕行；俯视与高架桥投影交叉，2D 难辨是否在桥面。',
-      },
-      {
-        id: 10,
-        name: '南端→东端（上高架）',
-        start: 't_ic_b_s',
-        end: 't_ic_a_e',
-        desc: '与路线9同起点：本线南→东爬升为高架；演示「同一出发点、一层上一平面」在 2D 上难区分。',
-      },
-      {
-        id: 11,
-        name: '西端→高架东端（长距离爬升）',
-        start: 't_ic_c_w',
-        end: 't_ic_a_e',
-        desc: '典型平面近东西向、实际持续上坡；二维难表现纵坡，侧视/3D 可体现高差。',
-      },
-      {
-        id: 12,
-        name: '高架西端→西端地面（下地）',
-        start: 't_ic_a_w',
-        end: 't_ic_c_w',
-        desc: '先沿青蓝高架再经东→西下地匝道；俯视轨迹与高架上车辆投影相近，3D 可区分层位。',
-      },
-      {
-        id: 13,
-        name: '高架东端→南端（下坡）',
-        start: 't_ic_a_e',
-        end: 't_ic_b_s',
-        desc: '东→南下坡入地面主线；用于演示「下桥」过程，跟车视角优于平面箭头。',
-      },
-      {
-        id: 14,
-        name: '北端→东端（地面+上桥）',
-        start: 't_ic_b_n',
-        end: 't_ic_a_e',
-        desc: '经 hub、西向地面再汇上匝道；多段高度变化，平面导航条不易传达，3D 路径更完整。',
-      },
-      {
-        id: 15,
-        name: '东端→西端地面（高架转地面）',
-        start: 't_ic_a_e',
-        end: 't_ic_c_w',
-        desc: '东→西定向匝道下落：与纯地面东西向在投影上部分重叠，突出分层认知需求。',
-      },
-      {
-        id: 16,
-        name: '西段桥下→南侧桥下（横穿·地面）',
-        start: 't_ic_under_w',
-        end: 't_ic_under_s',
-        desc: '沿「青蓝高架桥下东西向地面辅路」再折向东南侧桥下，全程无上下匝道；与上桥路线平面投影接近，强调分层。',
-      },
-      {
-        id: 17,
-        name: '高架东端→南侧桥下（下匝道+桥下）',
-        start: 't_ic_a_e',
-        end: 't_ic_under_s',
-        desc: '先走东→南下匝道落地，再经南侧桥下集散点；突出「下匝道」与「匝道正下方地面」在 2D 上的易混性。',
-      },
-      {
-        id: 18,
-        name: '校园中心→南侧桥下（全程贴地）',
-        start: 'campus_c',
-        end: 't_ic_under_s',
-        desc: '经校园联络线进立交中心，再沿桥下联络道至南侧桥下辅路；与从高架驶来的车流在俯视上易重叠。',
-      },
+      { id: 4, name: '校园中心 → 高架东端', start: 'campus_c', end: 't_ic_a_e', desc: '典型上桥演示' },
+      { id: 5, name: '南端 → 东端', start: 't_ic_b_s', end: 't_ic_a_e', desc: '同起点上高架' },
+      { id: 6, name: '高架东端 → 南侧桥下', start: 't_ic_a_e', end: 't_ic_under_s', desc: '下桥再进入桥下道路' },
+      { id: 7, name: '桥下西段 → 南侧桥下', start: 't_ic_under_w', end: 't_ic_under_s', desc: '全程地面桥下对照' },
     ],
   },
 ]
@@ -171,6 +87,7 @@ interface ControlPanelProps {
   onStartNodeChange: (nodeId: string | null) => void
   onEndNodeChange: (nodeId: string | null) => void
   onPlanPath: () => void
+  recommendedRoutes?: RecommendedRoute[]
   
   // 仿真控制
   isPlaying: boolean
@@ -205,6 +122,7 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   onStartNodeChange,
   onEndNodeChange,
   onPlanPath,
+  recommendedRoutes = [],
   isPlaying,
   onPlayPause,
   onReset,
@@ -227,6 +145,18 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
   const [showRecommended, setShowRecommended] = useState(true)
   const [history, setHistory] = useState<HistoryRoute[]>([])
   
+  const mergedRecommendedSections = useMemo(() => {
+    if (recommendedRoutes.length === 0) return RECOMMENDED_ROUTE_SECTIONS
+    return [
+      {
+        title: '当前模板推荐',
+        hint: '模板切换后会自动更新，优先用这些路线做演示。',
+        routes: recommendedRoutes,
+      },
+      ...RECOMMENDED_ROUTE_SECTIONS,
+    ]
+  }, [recommendedRoutes])
+
   // 加载历史记录
   useEffect(() => {
     try {
@@ -348,8 +278,8 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
             </div>
             
             {showRecommended && (
-              <div className="space-y-3">
-                {RECOMMENDED_ROUTE_SECTIONS.map((section) => (
+              <div className="space-y-2.5">
+                {mergedRecommendedSections.map((section) => (
                   <div key={section.title} className="space-y-1.5">
                     <div className="text-[10px] font-semibold text-foreground/85 uppercase tracking-wide">
                       {section.title}
@@ -364,13 +294,17 @@ export const ControlPanel: React.FC<ControlPanelProps> = ({
                         onClick={() => selectRecommended(route)}
                         className="w-full text-left px-2.5 py-2 rounded-lg bg-primary/5 hover:bg-primary/10 border border-primary/20 transition-colors group"
                       >
-                        <div className="flex items-center gap-2">
-                          <Star className="h-3 w-3 text-yellow-500 shrink-0" />
-                          <span className="text-xs font-medium text-foreground group-hover:text-primary">
-                            {route.name}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <Star className="h-3 w-3 text-yellow-500 shrink-0" />
+                            <span className="text-xs font-medium text-foreground group-hover:text-primary truncate">
+                              {route.name}
+                            </span>
+                          </div>
+                          <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                            {route.desc}
                           </span>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5 pl-5 leading-snug">{route.desc}</p>
                       </button>
                     ))}
                   </div>

@@ -13,8 +13,8 @@ import type { RoadEdge, RoadNode } from '../data/types'
 // ————————————————————————————————————————————————————————————————
 export const T_IC_COLORS = {
   elevated: 0x00b8d4,
-  ground: 0x2a2a2a,
-  ramp: 0x7b1fa2,
+  ground: 0xfacc15,
+  ramp: 0x9d4edd,
   pier: 0x424242,
   marking: 0xffffff,
   debugPoint: 0xffeb3b,

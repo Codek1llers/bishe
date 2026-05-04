@@ -20,7 +20,6 @@ interface NavigationPanelProps {
   currentHint: NavigationHint | null
   nextHint: NavigationHint | null
   currentNode: RoadNode | null
-  progress: number
   remainingDistance: number
   remainingTime: number
 }
@@ -92,7 +91,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
 }) => {
   if (!currentHint) {
     return (
-      <Card className="w-80 animate-fade-in">
+      <Card className="w-full animate-fade-in">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Navigation className="h-5 w-5 text-primary" />
@@ -109,7 +108,7 @@ export const NavigationPanel: React.FC<NavigationPanelProps> = ({
   }
 
   return (
-    <Card className="w-80 animate-fade-in">
+    <Card className="w-full animate-fade-in">
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2">
           <Navigation className="h-5 w-5 text-primary" />

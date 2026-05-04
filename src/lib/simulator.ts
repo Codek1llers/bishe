@@ -123,6 +123,8 @@ export class NavigationSimulator {
     }
 
     this.cacheEdgeSamples()
+    this.updatePositionAtNode()
+    this.notifyNodeChange()
     this.notifyUpdate()
   }
   

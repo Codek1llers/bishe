@@ -5,10 +5,14 @@
 
 import * as THREE from 'three'
 import { RoadNetwork, RoadNode, RoadEdge, PathResult, VehicleState, Building } from '../data/types'
+import { buildEdgeCenterlinePoints } from '../lib/roadGeometry'
 
 // 道路颜色配置（当前均为地面道路）
 const ROAD_COLORS = {
-  ground: 0x4a5568,
+  ground: 0xfacc15,
+  overpass: 0x00b8d4,
+  ramp: 0x9d4edd,
+  marking: 0xffffff,
   highlight: 0x00d4ff,
   pathGlow: 0x00ffff,
 }
@@ -29,6 +33,7 @@ export class Scene3D {
   private container: HTMLElement
   
   private roadMeshes: Map<string, THREE.Object3D> = new Map()
+  private roadDecorations: THREE.Object3D[] = []
   private nodeMeshes: Map<string, THREE.Mesh> = new Map()
   private buildingMeshes: Map<string, THREE.Group> = new Map()
   private buildingLabels: THREE.Group = new THREE.Group()
@@ -67,8 +72,8 @@ export class Scene3D {
     
     // 初始化场景
     this.scene = new THREE.Scene()
-    this.scene.background = new THREE.Color(0x0f172a)
-    this.scene.fog = new THREE.Fog(0x0f172a, 400, 1000)
+    this.scene.background = new THREE.Color(0x172033)
+    this.scene.fog = new THREE.Fog(0x172033, 450, 1100)
     
     // 初始化相机
     const aspect = container.clientWidth / container.clientHeight
@@ -250,9 +255,9 @@ export class Scene3D {
     // 地面平面
     const groundGeometry = new THREE.PlaneGeometry(1000, 1000)
     const groundMaterial = new THREE.MeshStandardMaterial({
-      color: 0x1e293b,
-      roughness: 0.9,
-      metalness: 0.1,
+      color: 0x0b1220,
+      roughness: 0.95,
+      metalness: 0.05,
     })
     const ground = new THREE.Mesh(groundGeometry, groundMaterial)
     ground.rotation.x = -Math.PI / 2
@@ -261,7 +266,7 @@ export class Scene3D {
     this.scene.add(ground)
     
     // 网格线
-    const gridHelper = new THREE.GridHelper(800, 40, 0x334155, 0x1e293b)
+    const gridHelper = new THREE.GridHelper(800, 40, 0x475569, 0x1e293b)
     gridHelper.position.y = 0
     this.scene.add(gridHelper)
   }
@@ -367,9 +372,11 @@ export class Scene3D {
     }
     // 清除旧的道路
     this.roadMeshes.forEach(mesh => this.scene.remove(mesh))
+    this.roadDecorations.forEach(obj => this.scene.remove(obj))
     this.nodeMeshes.forEach(mesh => this.scene.remove(mesh))
     this.buildingMeshes.forEach(mesh => this.scene.remove(mesh))
     this.roadMeshes.clear()
+    this.roadDecorations = []
     this.nodeMeshes.clear()
     this.buildingMeshes.clear()
     this.buildingMap.clear()
@@ -425,7 +432,7 @@ export class Scene3D {
   }
   
   /**
-   * 地面道路：长方体沿起终点放置（无样条/挤出）
+   * 普通路网道路：统一改为彩色立体路面风格，支持曲线、双虚线和轻微厚度。
    */
   private addRoad(edge: RoadEdge) {
     if (edge.renderInScene === false) return
@@ -433,22 +440,19 @@ export class Scene3D {
     const toNode = this.nodeMap.get(edge.to)
     if (!fromNode || !toNode) return
 
-    const startY = this.is3DMode ? fromNode.z : 0
-    const endY = this.is3DMode ? toNode.z : 0
-    const start = new THREE.Vector3(fromNode.x, startY, fromNode.y)
-    const end = new THREE.Vector3(toNode.x, endY, toNode.y)
-    const direction = end.clone().sub(start)
-    const horizontalDir = new THREE.Vector3(direction.x, 0, direction.z)
-    const horizontalLength = horizontalDir.length()
-    const length3D = direction.length()
-    const heightDiff = endY - startY
-    const slopeAngle = horizontalLength > 1e-6 ? Math.atan2(heightDiff, horizontalLength) : 0
+    const points = buildEdgeCenterlinePoints(edge, fromNode, toNode, {
+      nodeMap: this.nodeMap,
+      networkEdges: [],
+      is3DMode: this.is3DMode,
+    })
 
-    const roadWidth = 8
-    const roadHeight = 0.65
-    const geometry = new THREE.BoxGeometry(length3D, roadHeight, roadWidth)
-    const color = ROAD_COLORS.ground
-    /** 不透明沥青实体：与立交路面一致，避免半透明穿模 */
+    if (points.length < 2) return
+
+    const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5)
+    const roadWidth = edge.type === 'overpass' ? 16 : edge.type === 'ramp' ? 9 : 12
+    const roadThickness = 0.22
+    const ribbon = this.buildRibbonGeometry(curve, roadWidth, 64)
+    const color = edge.type === 'overpass' ? ROAD_COLORS.overpass : edge.type === 'ramp' ? ROAD_COLORS.ramp : ROAD_COLORS.ground
     const material = new THREE.MeshStandardMaterial({
       color,
       transparent: false,
@@ -460,19 +464,90 @@ export class Scene3D {
       roughness: 0.8,
     })
 
-    const road = new THREE.Mesh(geometry, material)
-    const midpoint = start.clone().add(end).multiplyScalar(0.5)
-    road.position.copy(midpoint)
-    road.position.y += roadHeight / 2
-    road.rotation.y = -Math.atan2(direction.z, direction.x)
-    road.rotation.z = slopeAngle
+    const road = new THREE.Mesh(ribbon, material)
+    road.position.y += roadThickness
     road.castShadow = true
     road.receiveShadow = true
     road.renderOrder = 0
     road.userData = { edgeId: edge.id, edge, restColor: color }
 
     this.scene.add(road)
+    this.addDashedLaneLines(curve, roadWidth, edge.id)
     this.roadMeshes.set(edge.id, road)
+    this.roadMeshes.set(`${edge.id}_rev`, road)
+  }
+
+  private buildRibbonGeometry(curve: THREE.CatmullRomCurve3, width: number, segments: number): THREE.BufferGeometry {
+    const halfW = width * 0.5
+    const up = new THREE.Vector3(0, 1, 0)
+    const positions: number[] = []
+    const uvs: number[] = []
+    const indices: number[] = []
+
+    for (let i = 0; i <= segments; i++) {
+      const u = i / segments
+      const p = curve.getPointAt(u)
+      const tan = curve.getTangentAt(u).normalize()
+      let side = new THREE.Vector3().crossVectors(tan, up)
+      if (side.lengthSq() < 1e-10) {
+        side = new THREE.Vector3().crossVectors(new THREE.Vector3(1, 0, 0), tan)
+      }
+      side.normalize()
+      const l = p.clone().add(side.clone().multiplyScalar(halfW))
+      const r = p.clone().add(side.clone().multiplyScalar(-halfW))
+      positions.push(l.x, l.y, l.z, r.x, r.y, r.z)
+      uvs.push(0, u, 1, u)
+    }
+
+    for (let i = 0; i < segments; i++) {
+      const b = i * 2
+      indices.push(b, b + 1, b + 2)
+      indices.push(b + 1, b + 3, b + 2)
+    }
+
+    const geom = new THREE.BufferGeometry()
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geom.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2))
+    geom.setIndex(indices)
+    geom.computeVertexNormals()
+    return geom
+  }
+
+  private addDashedLaneLines(curve: THREE.CatmullRomCurve3, roadWidth: number, edgeId: string) {
+    const mat = new THREE.LineDashedMaterial({
+      color: ROAD_COLORS.marking,
+      dashSize: roadWidth > 12 ? 6 : 4,
+      gapSize: roadWidth > 12 ? 4 : 3.5,
+      linewidth: 1,
+      transparent: false,
+      opacity: 1,
+      depthWrite: true,
+      depthTest: true,
+    })
+    const up = new THREE.Vector3(0, 1, 0)
+    const offset = roadWidth * 0.22
+
+    for (const sign of [-1, 1] as const) {
+      const pts: THREE.Vector3[] = []
+      for (let i = 0; i <= 64; i++) {
+        const u = i / 64
+        const p = curve.getPointAt(u)
+        const tan = curve.getTangentAt(u).normalize()
+        let side = new THREE.Vector3().crossVectors(tan, up)
+        if (side.lengthSq() < 1e-10) side = new THREE.Vector3().crossVectors(new THREE.Vector3(1, 0, 0), tan)
+        side.normalize()
+        const o = p.clone().add(side.multiplyScalar(sign * offset))
+        o.y += 0.16
+        pts.push(o)
+      }
+      const geo = new THREE.BufferGeometry().setFromPoints(pts)
+      const line = new THREE.Line(geo, mat)
+      line.computeLineDistances()
+      line.renderOrder = 10
+      line.userData = { edgeId: `${edgeId}_lane_${sign}` }
+      this.scene.add(line)
+      this.roadDecorations.push(line)
+    }
   }
 
   /** 解除高亮/选中后恢复道路本色（立交与城区路网共用 restColor） */
@@ -724,6 +799,7 @@ export class Scene3D {
   createVehicle(): THREE.Group {
     if (this.vehicle) {
       this.scene.remove(this.vehicle)
+      this.vehicle = null
     }
     
     this.vehicle = new THREE.Group()
@@ -770,6 +846,17 @@ export class Scene3D {
     return this.vehicle
   }
   
+  /**
+   * 移除导航车辆
+   */
+  removeVehicle() {
+    if (!this.vehicle) return
+    this.scene.remove(this.vehicle)
+    this.vehicle = null
+    this.vehicleLight = null
+    this.followVehicle = false
+  }
+
   /**
    * 更新车辆位置
    */
@@ -860,6 +947,22 @@ export class Scene3D {
     this.camera.lookAt(this.followLookAt)
   }
   
+  /** 将屏幕点击位置投影到地面，供场景搭建新增节点使用 */
+  getGroundPoint(event: MouseEvent): THREE.Vector3 | null {
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    const mouse = new THREE.Vector2(
+      ((event.clientX - rect.left) / rect.width) * 2 - 1,
+      -((event.clientY - rect.top) / rect.height) * 2 + 1
+    )
+
+    const raycaster = new THREE.Raycaster()
+    raycaster.setFromCamera(mouse, this.camera)
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
+    const point = new THREE.Vector3()
+    const ok = raycaster.ray.intersectPlane(plane, point)
+    return ok ? point : null
+  }
+
   /**
    * 获取点击的节点
    */
